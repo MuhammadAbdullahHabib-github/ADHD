@@ -32,10 +32,11 @@ export const AvatarVideo = forwardRef<HTMLVideoElement>(({}, ref) => {
         ref={ref}
         autoPlay
         playsInline
+        className="w-full h-full object-cover"
         style={{
           width: "100%",
           height: "100%",
-          objectFit: "contain",
+          objectFit: "cover",
         }}
       >
         <track kind="captions" />
