@@ -23,7 +23,7 @@ import { MessageHistory } from "./AvatarSession/MessageHistory";
 import { AVATARS } from "@/app/lib/constants";
 
 const DEFAULT_CONFIG: StartAvatarRequest = {
-  quality: AvatarQuality.Low,
+  quality: AvatarQuality.High,
   avatarName: AVATARS[0].avatar_id,
   knowledgeId: undefined,
   voice: {
@@ -140,20 +140,21 @@ function InteractiveAvatar() {
           ) : sessionState === StreamingAvatarSessionState.INACTIVE ? (
             <div className="flex flex-row gap-4">
               <Button onClick={() => startSessionV2(true)}>
-                Start Voice Chat
+                Start Session
               </Button>
-              <Button onClick={() => startSessionV2(false)}>
+              {/* <Button onClick={() => startSessionV2(false)}>
                 Start Text Chat
-              </Button>
+              </Button> */}
             </div>
           ) : (
             <LoadingIcon />
           )}
         </div>
       </div>
-      {sessionState === StreamingAvatarSessionState.CONNECTED && (
+      {/* Voice Chat and Text Chat controls hidden for now */}
+      {/* {sessionState === StreamingAvatarSessionState.CONNECTED && (
         <MessageHistory />
-      )}
+      )} */}
     </div>
   );
 }

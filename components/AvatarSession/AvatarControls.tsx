@@ -19,7 +19,8 @@ export const AvatarControls: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-3 relative w-full items-center">
-      <ToggleGroup
+      {/* Voice Chat and Text Chat tabs hidden */}
+      {/* <ToggleGroup
         className={`bg-zinc-700 rounded-lg p-1 ${isVoiceChatLoading ? "opacity-50" : ""}`}
         disabled={isVoiceChatLoading}
         type="single"
@@ -48,13 +49,18 @@ export const AvatarControls: React.FC = () => {
         >
           Text Chat
         </ToggleGroupItem>
-      </ToggleGroup>
-      {isVoiceChatActive || isVoiceChatLoading ? <AudioInput /> : <TextInput />}
-      <div className="absolute top-[-70px] right-3">
+      </ToggleGroup> */}
+      
+      {/* Only show microphone button, hide text input */}
+      {isVoiceChatActive || isVoiceChatLoading ? <AudioInput /> : null}
+      {/* {isVoiceChatActive || isVoiceChatLoading ? <AudioInput /> : <TextInput />} */}
+      
+      {/* Interrupt button hidden */}
+      {/* <div className="absolute top-[-70px] right-3">
         <Button className="!bg-zinc-700 !text-white" onClick={interrupt}>
           Interrupt
         </Button>
-      </div>
+      </div> */}
     </div>
   );
 };
