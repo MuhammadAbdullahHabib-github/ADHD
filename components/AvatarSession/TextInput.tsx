@@ -8,43 +8,37 @@ import { SendIcon } from "../Icons";
 import { useTextChat } from "../logic/useTextChat";
 import { Input } from "../Input";
 import { useConversationState } from "../logic/useConversationState";
+import { useStreamingAvatarContext } from "../logic/context";
 
 export const TextInput: React.FC = () => {
-  const { sendMessage, sendMessageSync, repeatMessage, repeatMessageSync } =
-    useTextChat();
+  const { avatarRef } = useStreamingAvatarContext();
   const { startListening, stopListening } = useConversationState();
   const [taskType, setTaskType] = useState<TaskType>(TaskType.TALK);
   const [taskMode, setTaskMode] = useState<TaskMode>(TaskMode.ASYNC);
   const [message, setMessage] = useState("");
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     if (message.trim() === "") {
       return;
     }
-    if (taskType === TaskType.TALK) {
-      taskMode === TaskMode.SYNC
-        ? sendMessageSync(message)
-        : sendMessage(message);
-    } else {
-      taskMode === TaskMode.SYNC
-        ? repeatMessageSync(message)
-        : repeatMessage(message);
+    // Use HeyGen built-in voice processing instead of OpenAI
+    if (avatarRef.current) {
+      avatarRef.current.speak({
+        text: message,
+        taskType: TaskType.TALK,
+        taskMode: TaskMode.ASYNC,
+      });
     }
     setMessage("");
   }, [
-    taskType,
-    taskMode,
     message,
-    sendMessage,
-    sendMessageSync,
-    repeatMessage,
-    repeatMessageSync,
+    avatarRef,
   ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Enter") {
-        handleSend();
+        void handleSend();
       }
     };
 
@@ -65,29 +59,37 @@ export const TextInput: React.FC = () => {
 
   return (
     <div className="flex flex-row gap-2 items-end w-full">
-      <Select
-        isSelected={(option) => option === taskType}
-        options={Object.values(TaskType)}
-        renderOption={(option) => option.toUpperCase()}
-        value={taskType.toUpperCase()}
-        onSelect={setTaskType}
-      />
-      <Select
-        isSelected={(option) => option === taskMode}
-        options={Object.values(TaskMode)}
-        renderOption={(option) => option.toUpperCase()}
-        value={taskMode.toUpperCase()}
-        onSelect={setTaskMode}
-      />
-      <Input
+      {/* Hidden selection bars - always use TALK mode with OpenAI API */}
+      <div style={{ display: 'none' }}>
+        <Select
+          isSelected={(option) => option === taskType}
+          options={Object.values(TaskType)}
+          renderOption={(option) => option.toUpperCase()}
+          value={taskType.toUpperCase()}
+          onSelect={setTaskType}
+        />
+        <Select
+          disabled={taskType === TaskType.TALK}
+          isSelected={(option) => option === taskMode}
+          options={Object.values(TaskMode)}
+          renderOption={(option) => option.toUpperCase()}
+          value={taskMode.toUpperCase()}
+          onSelect={setTaskMode}
+        />
+      </div>
+      {/* <Input
         className="min-w-[500px]"
-        placeholder={`Type something for the avatar to ${taskType === TaskType.REPEAT ? "repeat" : "respond"}...`}
+        placeholder="Type something for the avatar to respond..."
         value={message}
         onChange={setMessage}
       />
-      <Button className="!p-2" onClick={handleSend}>
+      <Button
+        className="!p-2"
+        disabled={message.trim() === ""}
+        onClick={handleSend}
+      >
         <SendIcon size={20} />
-      </Button>
+      </Button> */}
     </div>
   );
 };

@@ -1,6 +1,9 @@
 import StreamingAvatar, {
   ConnectionQuality,
+  StreamingEvents,
   StreamingTalkingMessageEvent,
+  TaskMode,
+  TaskType,
   UserTalkingMessageEvent,
 } from "@heygen/streaming-avatar";
 import React, { useRef, useState } from "react";
@@ -51,6 +54,7 @@ type StreamingAvatarContextProps = {
     detail: StreamingTalkingMessageEvent;
   }) => void;
   handleEndMessage: () => void;
+  addUserMessage: (content: string) => string;
 
   isListening: boolean;
   setIsListening: (isListening: boolean) => void;
@@ -61,6 +65,12 @@ type StreamingAvatarContextProps = {
 
   connectionQuality: ConnectionQuality;
   setConnectionQuality: (connectionQuality: ConnectionQuality) => void;
+
+  sendAssistantMessage: (
+    message: string,
+    options?: { messageId?: string },
+  ) => Promise<string | null>;
+  isAssistantProcessing: boolean;
 };
 
 const StreamingAvatarContext = React.createContext<StreamingAvatarContextProps>(
@@ -81,6 +91,7 @@ const StreamingAvatarContext = React.createContext<StreamingAvatarContextProps>(
     handleUserTalkingMessage: () => {},
     handleStreamingTalkingMessage: () => {},
     handleEndMessage: () => {},
+    addUserMessage: () => "",
     isListening: false,
     setIsListening: () => {},
     isUserTalking: false,
@@ -89,6 +100,8 @@ const StreamingAvatarContext = React.createContext<StreamingAvatarContextProps>(
     setIsAvatarTalking: () => {},
     connectionQuality: ConnectionQuality.UNKNOWN,
     setConnectionQuality: () => {},
+    sendAssistantMessage: async () => null,
+    isAssistantProcessing: false,
   },
 );
 
@@ -190,6 +203,21 @@ const useStreamingAvatarMessageState = () => {
     handleUserTalkingMessage,
     handleStreamingTalkingMessage,
     handleEndMessage,
+    addUserMessage: (content: string) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id,
+          sender: MessageSender.CLIENT,
+          content,
+        },
+      ]);
+      currentSenderRef.current = null;
+
+      return id;
+    },
   };
 };
 
@@ -219,6 +247,151 @@ const useStreamingAvatarConnectionQualityState = () => {
   return { connectionQuality, setConnectionQuality };
 };
 
+const useStreamingAvatarAssistantIntegration = ({
+  avatarRef,
+  sessionState,
+  messages,
+}: {
+  avatarRef: React.MutableRefObject<StreamingAvatar | null>;
+  sessionState: StreamingAvatarSessionState;
+  messages: Message[];
+}) => {
+  const [isAssistantProcessing, setIsAssistantProcessing] = useState(false);
+  const threadIdRef = useRef<string | null>(null);
+  const lastProcessedMessageIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<Message[]>(messages);
+
+  React.useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  React.useEffect(() => {
+    if (sessionState === StreamingAvatarSessionState.INACTIVE) {
+      threadIdRef.current = null;
+      lastProcessedMessageIdRef.current = null;
+    }
+  }, [sessionState]);
+
+  const callAssistant = React.useCallback(
+    async (userMessage: string, options?: { messageId?: string }) => {
+      const trimmedMessage = userMessage.trim();
+
+      if (!trimmedMessage) {
+        return null;
+      }
+
+      if (options?.messageId) {
+        lastProcessedMessageIdRef.current = options.messageId;
+      }
+
+      setIsAssistantProcessing(true);
+
+      try {
+        const response = await fetch("/api/openai-assistant", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: trimmedMessage,
+            threadId: threadIdRef.current,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+
+          throw new Error(
+            errorText || "Failed to retrieve response from assistant.",
+          );
+        }
+
+        const data: {
+          response?: string;
+          threadId?: string;
+        } = await response.json();
+
+        if (data.threadId) {
+          threadIdRef.current = data.threadId;
+        }
+
+        if (data.response && avatarRef.current) {
+          await avatarRef.current.speak({
+            text: data.response,
+            taskType: TaskType.REPEAT,
+            taskMode: TaskMode.ASYNC,
+          });
+        }
+
+        return data.response ?? null;
+      } catch (error) {
+        if (options?.messageId) {
+          lastProcessedMessageIdRef.current = null;
+        }
+        console.error("Assistant integration error:", error);
+        throw error;
+      } finally {
+        setIsAssistantProcessing(false);
+      }
+    },
+    [avatarRef],
+  );
+
+  const processLatestUserMessage = React.useCallback(async () => {
+    const latestUserMessage = [...messagesRef.current]
+      .reverse()
+      .find((message) => message.sender === MessageSender.CLIENT);
+
+    if (!latestUserMessage) {
+      return;
+    }
+
+    if (!latestUserMessage.content.trim()) {
+      return;
+    }
+
+    if (latestUserMessage.id === lastProcessedMessageIdRef.current) {
+      return;
+    }
+
+    lastProcessedMessageIdRef.current = latestUserMessage.id;
+
+    try {
+      await callAssistant(latestUserMessage.content);
+    } catch (error) {
+      lastProcessedMessageIdRef.current = null;
+    }
+  }, [callAssistant]);
+
+  // OpenAI integration disabled - using HeyGen built-in voice processing only
+  // React.useEffect(() => {
+  //   if (sessionState !== StreamingAvatarSessionState.CONNECTED) {
+  //     return;
+  //   }
+
+  //   const avatar = avatarRef.current;
+
+  //   if (!avatar) {
+  //     return;
+  //   }
+
+  //   const handleUserEnd = () => {
+  //     processLatestUserMessage();
+  //   };
+
+  //   avatar.on(StreamingEvents.USER_END_MESSAGE, handleUserEnd);
+
+  //   return () => {
+  //     avatar.off(StreamingEvents.USER_END_MESSAGE, handleUserEnd);
+  //   };
+  // }, [avatarRef, processLatestUserMessage, sessionState]);
+
+  return {
+    sendAssistantMessage: callAssistant,
+    isAssistantProcessing,
+  };
+};
+
 export const StreamingAvatarProvider = ({
   children,
   basePath,
@@ -233,6 +406,11 @@ export const StreamingAvatarProvider = ({
   const listeningState = useStreamingAvatarListeningState();
   const talkingState = useStreamingAvatarTalkingState();
   const connectionQualityState = useStreamingAvatarConnectionQualityState();
+  const assistantState = useStreamingAvatarAssistantIntegration({
+    avatarRef,
+    sessionState: sessionState.sessionState,
+    messages: messageState.messages,
+  });
 
   return (
     <StreamingAvatarContext.Provider
@@ -245,6 +423,7 @@ export const StreamingAvatarProvider = ({
         ...listeningState,
         ...talkingState,
         ...connectionQualityState,
+        ...assistantState,
       }}
     >
       {children}

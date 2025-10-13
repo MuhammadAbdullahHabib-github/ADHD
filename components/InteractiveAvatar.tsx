@@ -18,7 +18,6 @@ import { AvatarControls } from "./AvatarSession/AvatarControls";
 import { useVoiceChat } from "./logic/useVoiceChat";
 import { StreamingAvatarProvider, StreamingAvatarSessionState } from "./logic";
 import { LoadingIcon } from "./Icons";
-import { MessageHistory } from "./AvatarSession/MessageHistory";
 
 import { AVATARS } from "@/app/lib/constants";
 
@@ -26,6 +25,18 @@ const DEFAULT_CONFIG: StartAvatarRequest = {
   quality: AvatarQuality.High,
   avatarName: AVATARS[0].avatar_id,
   knowledgeId: undefined,
+  knowledgeBase: `You are a real ADHD coach with 10+ years experience. Use authentic coaching language and techniques:
+
+- Start with validation: 'I hear you' or 'That makes total sense'
+- Use ADHD-specific strategies: body doubling, time blocking, external structure
+- Ask powerful questions: 'What's getting in your way right now?' or 'What would help you feel more in control?'
+- Normalize ADHD challenges: 'Your brain works differently, not wrong'
+- Focus on systems over willpower: 'Let's build some scaffolding for your brain'
+- Use coaching language: 'What I'm hearing is...' or 'It sounds like...'
+- End with one concrete next step
+- Keep responses SHORT and CONCISE (1-2 sentences max)
+- Be warm, encouraging, and direct
+- Avoid medical advice, focus on practical strategies`,
   voice: {
     rate: 1.5,
     emotion: VoiceEmotion.EXCITED,
@@ -44,6 +55,7 @@ function InteractiveAvatar() {
   const { startVoiceChat } = useVoiceChat();
 
   const [config, setConfig] = useState<StartAvatarRequest>(DEFAULT_CONFIG);
+  const [isStarting, setIsStarting] = useState(false);
 
   const mediaStream = useRef<HTMLVideoElement>(null);
 
@@ -65,6 +77,20 @@ function InteractiveAvatar() {
 
   const startSessionV2 = useMemoizedFn(async (isVoiceChat: boolean) => {
     try {
+      setIsStarting(true);
+      // Suppress LiveKit WebRTC console errors
+      const originalConsoleError = console.error;
+      console.error = (...args) => {
+        const message = args[0]?.toString() || '';
+        if (message.includes('Unknown DataChannel error') || 
+            message.includes('WebRTC') || 
+            message.includes('LiveKit')) {
+          // Suppress these noisy WebRTC errors
+          return;
+        }
+        originalConsoleError.apply(console, args);
+      };
+
       const newToken = await fetchAccessToken();
       const avatar = initAvatar(newToken);
 
@@ -76,6 +102,8 @@ function InteractiveAvatar() {
       });
       avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
         console.log("Stream disconnected");
+        // Restore original console.error
+        console.error = originalConsoleError;
       });
       avatar.on(StreamingEvents.STREAM_READY, (event) => {
         console.log(">>>>> Stream ready:", event.detail);
@@ -106,6 +134,8 @@ function InteractiveAvatar() {
       }
     } catch (error) {
       console.error("Error starting avatar session:", error);
+    } finally {
+      setIsStarting(false);
     }
   });
 
@@ -139,8 +169,21 @@ function InteractiveAvatar() {
             <AvatarControls />
           ) : sessionState === StreamingAvatarSessionState.INACTIVE ? (
             <div className="flex flex-row gap-4">
-              <Button onClick={() => startSessionV2(true)}>
-                Start Session
+              <Button 
+                onClick={() => startSessionV2(true)}
+                disabled={isStarting}
+                className={`transition-all duration-200 transform active:scale-95 hover:scale-105 ${
+                  isStarting ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-lg'
+                }`}
+              >
+                {isStarting ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Starting...
+                  </div>
+                ) : (
+                  'Start Session'
+                )}
               </Button>
               {/* <Button onClick={() => startSessionV2(false)}>
                 Start Text Chat

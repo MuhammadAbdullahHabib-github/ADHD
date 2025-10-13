@@ -4,7 +4,12 @@ import { useCallback } from "react";
 import { useStreamingAvatarContext } from "./context";
 
 export const useTextChat = () => {
-  const { avatarRef } = useStreamingAvatarContext();
+  const {
+    avatarRef,
+    sendAssistantMessage,
+    addUserMessage,
+    isAssistantProcessing,
+  } = useStreamingAvatarContext();
 
   const sendMessage = useCallback(
     (message: string) => {
@@ -62,5 +67,20 @@ export const useTextChat = () => {
     sendMessageSync,
     repeatMessage,
     repeatMessageSync,
+    sendMessageWithAssistant: useCallback(
+      async (message: string) => {
+        const trimmed = message.trim();
+
+        if (!trimmed) {
+          return null;
+        }
+
+        const messageId = addUserMessage(trimmed);
+
+        return await sendAssistantMessage(trimmed, { messageId });
+      },
+      [addUserMessage, sendAssistantMessage],
+    ),
+    isAssistantProcessing,
   };
 };

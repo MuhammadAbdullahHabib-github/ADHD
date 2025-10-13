@@ -15,11 +15,11 @@ export const AvatarVideo = forwardRef<HTMLVideoElement>(({}, ref) => {
 
   return (
     <>
-      {connectionQuality !== ConnectionQuality.UNKNOWN && (
+      {/* {connectionQuality !== ConnectionQuality.UNKNOWN && (
         <div className="absolute top-3 left-3 bg-black text-white rounded-lg px-3 py-2">
           Connection Quality: {connectionQuality}
         </div>
-      )}
+      )} */}
       {isLoaded && (
         <Button
           className="absolute top-3 right-3 !p-2 bg-zinc-700 bg-opacity-50 z-10"
