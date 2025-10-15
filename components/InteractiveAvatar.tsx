@@ -8,6 +8,7 @@ import {
   ElevenLabsModel,
 } from "@heygen/streaming-avatar";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMemoizedFn, useUnmount } from "ahooks";
 
 import { Button } from "./Button";
@@ -16,10 +17,58 @@ import { AvatarVideo } from "./AvatarSession/AvatarVideo";
 import { useStreamingAvatarSession } from "./logic/useStreamingAvatarSession";
 import { AvatarControls } from "./AvatarSession/AvatarControls";
 import { useVoiceChat } from "./logic/useVoiceChat";
+import { useMicPermission } from "./logic/useMicPermission";
 import { StreamingAvatarProvider, StreamingAvatarSessionState } from "./logic";
 import { LoadingIcon } from "./Icons";
 
 import { AVATARS } from "@/app/lib/constants";
+
+function buildMicHelpMessage(origin: string) {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
+  const site = encodeURIComponent(origin);
+  if (ua.includes("edg")) {
+    return (
+      "Microphone permission is required for the avatar to work.\n\n" +
+      "Microsoft Edge:\n" +
+      "1) Click the lock icon next to the address bar.\n" +
+      "2) Set Microphone to Allow for this site, then reload.\n" +
+      "Or open: edge://settings/content/siteDetails?site=" + site
+    );
+  }
+  if (ua.includes("chrome")) {
+    return (
+      "Microphone permission is required for the avatar to work.\n\n" +
+      "Google Chrome:\n" +
+      "1) Click the lock icon next to the address bar.\n" +
+      "2) Set Microphone to Allow for this site, then reload.\n" +
+      "Or open: chrome://settings/content/siteDetails?site=" + site
+    );
+  }
+  if (ua.includes("firefox")) {
+    return (
+      "Microphone permission is required for the avatar to work.\n\n" +
+      "Mozilla Firefox:\n" +
+      "1) Click the camera/microphone icon left of the address bar.\n" +
+      "2) Choose Allow microphone for this site, then reload.\n" +
+      "Alternatively: Settings → Privacy & Security → Permissions → Microphone."
+    );
+  }
+  if (ua.includes("safari")) {
+    return (
+      "Microphone permission is required for the avatar to work.\n\n" +
+      "Safari:\n" +
+      "1) Safari → Settings for This Website….\n" +
+      "2) Set Microphone to Allow, then reload.\n" +
+      "Alternatively: System Settings → Privacy & Security → Microphone → allow Safari."
+    );
+  }
+  return (
+    "Microphone permission is required for the avatar to work.\n\n" +
+    "Steps:\n" +
+    "1) Click the lock icon near the address bar.\n" +
+    "2) Set Microphone to Allow for this site, then reload."
+  );
+}
 
 const DEFAULT_CONFIG: StartAvatarRequest = {
   quality: AvatarQuality.High,
@@ -58,6 +107,8 @@ function InteractiveAvatar() {
   const [isStarting, setIsStarting] = useState(false);
 
   const mediaStream = useRef<HTMLVideoElement>(null);
+  const searchParams = useSearchParams();
+  const { state: micState, request: requestMic } = useMicPermission();
 
   async function fetchAccessToken() {
     try {
@@ -78,6 +129,19 @@ function InteractiveAvatar() {
   const startSessionV2 = useMemoizedFn(async (isVoiceChat: boolean) => {
     try {
       setIsStarting(true);
+      // If voice chat requested, acquire mic permission FIRST to trigger prompt immediately
+      if (isVoiceChat) {
+        let ok = micState === "granted";
+        if (!ok) ok = await requestMic();
+        if (!ok) {
+          if (typeof window !== "undefined") {
+            const msg = buildMicHelpMessage(location.origin);
+            window.alert(msg);
+          }
+          setIsStarting(false);
+          return;
+        }
+      }
       // Suppress LiveKit WebRTC console errors
       const originalConsoleError = console.error;
       console.error = (...args) => {
@@ -144,6 +208,17 @@ function InteractiveAvatar() {
   });
 
   useEffect(() => {
+    // Apply avatar from query param ?avatar=male|female when lobby is visible
+    const qp = searchParams?.get("avatar");
+    if (!qp) return;
+    setConfig((prev) => ({
+      ...prev,
+      avatarName:
+        qp === "male" ? "Shawn_Therapist_public" : qp === "female" ? "Ann_Therapist_public" : prev.avatarName,
+    }));
+  }, [searchParams, setConfig]);
+
+  useEffect(() => {
     if (stream && mediaStream.current) {
       mediaStream.current.srcObject = stream;
       mediaStream.current.onloadedmetadata = () => {
@@ -159,7 +234,7 @@ function InteractiveAvatar() {
           {sessionState !== StreamingAvatarSessionState.INACTIVE ? (
             <AvatarVideo ref={mediaStream} />
           ) : (
-            <div className="w-full h-full flex items-center justify-center p-4">
+            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
               <AvatarConfig config={config} onConfigChange={setConfig} />
             </div>
           )}
