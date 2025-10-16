@@ -27,48 +27,66 @@ import { AVATARS } from "@/app/lib/constants";
 
 function buildMicHelpMessage(origin: string) {
   const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
-  const site = encodeURIComponent(origin);
+
+  // Opera (check before Chrome since Opera includes "chrome" in UA)
+  if (ua.includes("opr") || ua.includes("opera")) {
+    return (
+      "🔹 Opera\n\n" +
+      "1. Click the lock icon 🔒 next to the URL\n" +
+      "2. Choose Site settings\n" +
+      "3. Set Microphone → Allow\n" +
+      "4. Refresh the tab"
+    );
+  }
+
+  // Microsoft Edge
   if (ua.includes("edg")) {
     return (
-      "Microphone permission is required for the avatar to work.\n\n" +
-      "Microsoft Edge:\n" +
-      "1) Click the lock icon next to the address bar.\n" +
-      "2) Set Microphone to Allow for this site, then reload.\n" +
-      "Or open: edge://settings/content/siteDetails?site=" + site
+      "🔹 Microsoft Edge\n\n" +
+      "1. Click the lock icon 🔒 beside the URL\n" +
+      "2. Select Permissions for this site\n" +
+      "3. Set Microphone → Allow\n" +
+      "4. Reload the page"
     );
   }
+
+  // Google Chrome
   if (ua.includes("chrome")) {
     return (
-      "Microphone permission is required for the avatar to work.\n\n" +
-      "Google Chrome:\n" +
-      "1) Click the lock icon next to the address bar.\n" +
-      "2) Set Microphone to Allow for this site, then reload.\n" +
-      "Or open: chrome://settings/content/siteDetails?site=" + site
+      "🔹 Google Chrome\n\n" +
+      "1. Click the lock icon 🔒 in the address bar\n" +
+      "2. Go to Site settings\n" +
+      "3. Set Microphone → Allow\n" +
+      "4. Refresh the page"
     );
   }
+
+  // Mozilla Firefox
   if (ua.includes("firefox")) {
     return (
-      "Microphone permission is required for the avatar to work.\n\n" +
-      "Mozilla Firefox:\n" +
-      "1) Click the camera/microphone icon left of the address bar.\n" +
-      "2) Choose Allow microphone for this site, then reload.\n" +
-      "Alternatively: Settings → Privacy & Security → Permissions → Microphone."
+      "🔹 Mozilla Firefox\n\n" +
+      "1. Click the microphone icon 🎙️ in the address bar\n" +
+      "2. Choose Allow microphone access\n" +
+      "3. Reload if needed"
     );
   }
+
+  // Safari
   if (ua.includes("safari")) {
     return (
-      "Microphone permission is required for the avatar to work.\n\n" +
-      "Safari:\n" +
-      "1) Safari → Settings for This Website….\n" +
-      "2) Set Microphone to Allow, then reload.\n" +
-      "Alternatively: System Settings → Privacy & Security → Microphone → allow Safari."
+      "🔹 Safari (Mac/iPhone)\n\n" +
+      "1. Go to Safari → Settings for This Website\n" +
+      "2. Under Microphone, choose Allow\n" +
+      "3. Reload the page"
     );
   }
+
+  // Generic fallback
   return (
-    "Microphone permission is required for the avatar to work.\n\n" +
-    "Steps:\n" +
-    "1) Click the lock icon near the address bar.\n" +
-    "2) Set Microphone to Allow for this site, then reload."
+    "Microphone permission is required.\n\n" +
+    "1. Click the lock icon 🔒 near the address bar\n" +
+    "2. Set Microphone → Allow\n" +
+    "3. Refresh the page"
   );
 }
 
@@ -111,6 +129,7 @@ function InteractiveAvatar() {
   const mediaStream = useRef<HTMLVideoElement>(null);
   const searchParams = useSearchParams();
   const { state: micState, request: requestMic } = useMicPermission();
+  const isStoppingRef = useRef(false);
 
   async function fetchAccessToken() {
     try {
@@ -228,6 +247,26 @@ function InteractiveAvatar() {
       };
     }
   }, [mediaStream, stream]);
+
+  // Monitor mic permission during active session - stop if mic gets disabled
+  useEffect(() => {
+    if (sessionState === StreamingAvatarSessionState.CONNECTED) {
+      if (micState === "denied" && !isStoppingRef.current) {
+        console.log("🛑 Microphone disabled during session - stopping avatar");
+        isStoppingRef.current = true;
+        (async () => {
+          await stopAvatar();
+          if (typeof window !== "undefined") {
+            window.alert("⚠️ Technical Issue Detected\nYour microphone has stopped working.\nPlease enable microphone access and start the session again.");
+          }
+          isStoppingRef.current = false;
+        })();
+      }
+    } else if (sessionState === StreamingAvatarSessionState.INACTIVE) {
+      // Reset the flag when session is inactive
+      isStoppingRef.current = false;
+    }
+  }, [micState, sessionState, stopAvatar]);
 
   return (
     <div className="w-full h-full flex flex-col">
