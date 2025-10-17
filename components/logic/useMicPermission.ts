@@ -17,7 +17,9 @@ export function useMicPermission() {
         }
         const perm = await query({ name: "microphone" as any });
         const update = () => {
-          if (!cancelled) setState((perm as any).state ?? "unknown");
+          const newState = (perm as any).state ?? "unknown";
+          console.log("🎤 Mic permission changed:", newState);
+          if (!cancelled) setState(newState);
         };
         update();
         (perm as any).onchange = update;

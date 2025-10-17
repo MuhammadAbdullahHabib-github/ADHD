@@ -9,7 +9,7 @@ import {
   STTProvider,
   ElevenLabsModel,
 } from "@heygen/streaming-avatar";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMemoizedFn, useUnmount } from "ahooks";
 
@@ -121,15 +121,40 @@ const DEFAULT_CONFIG: StartAvatarRequest = {
 function InteractiveAvatar() {
   const { initAvatar, startAvatar, stopAvatar, sessionState, stream } =
     useStreamingAvatarSession();
+
+  // Debug session state changes
+  useEffect(() => {
+    console.log("🔄 Session state changed:", sessionState);
+  }, [sessionState]);
   const { startVoiceChat } = useVoiceChat();
 
   const [config, setConfig] = useState<StartAvatarRequest>(DEFAULT_CONFIG);
   const [isStarting, setIsStarting] = useState(false);
+  const [micPaused, setMicPaused] = useState(false); // Track if session is paused due to mic issue
+  const [sessionWasActive, setSessionWasActive] = useState(false); // Track if we had an active session
 
   const mediaStream = useRef<HTMLVideoElement>(null);
+  
+  // Callback to ensure video element is properly attached
+  const setVideoRef = useCallback((element: HTMLVideoElement | null) => {
+    mediaStream.current = element;
+    console.log("🎥 Video element attached:", !!element);
+    
+    // If we have a stream but no element was attached before, set it now
+    if (element && stream) {
+      console.log("🎥 Setting stream on newly attached video element");
+      element.srcObject = stream;
+      element.onloadedmetadata = () => {
+        console.log("🎥 Video metadata loaded, starting playback...");
+        element.play();
+      };
+    }
+  }, [stream]);
   const searchParams = useSearchParams();
   const { state: micState, request: requestMic } = useMicPermission();
   const isStoppingRef = useRef(false);
+  const stopCallCountRef = useRef(0);
+  const lastConfigRef = useRef<StartAvatarRequest>(DEFAULT_CONFIG); // Store last config for reconnect
 
   async function fetchAccessToken() {
     try {
@@ -192,6 +217,7 @@ function InteractiveAvatar() {
       });
       avatar.on(StreamingEvents.STREAM_READY, (event) => {
         console.log(">>>>> Stream ready:", event.detail);
+        console.log("🎥 Stream ready - video should appear now!");
       });
       avatar.on(StreamingEvents.USER_START, (event) => {
         console.log(">>>>> User started talking:", event);
@@ -212,7 +238,16 @@ function InteractiveAvatar() {
         console.log(">>>>> Avatar end message:", event);
       });
 
+      // Store config for potential reconnect
+      lastConfigRef.current = config;
+
+      console.log("🚀 Starting avatar with config:", config);
       await startAvatar(config);
+      console.log("✅ Avatar start command completed");
+      
+      // Mark that we had an active session
+      setSessionWasActive(true);
+      setMicPaused(false);
 
       if (isVoiceChat) {
         await startVoiceChat();
@@ -240,24 +275,52 @@ function InteractiveAvatar() {
   }, [searchParams, setConfig]);
 
   useEffect(() => {
+    console.log("🎥 Stream effect:", { 
+      hasStream: !!stream, 
+      hasMediaElement: !!mediaStream.current,
+      sessionState,
+      streamTracks: stream?.getTracks?.()?.length || 0
+    });
+    
     if (stream && mediaStream.current) {
+      console.log("🎥 Setting video stream...");
       mediaStream.current.srcObject = stream;
       mediaStream.current.onloadedmetadata = () => {
+        console.log("🎥 Video metadata loaded, starting playback...");
         mediaStream.current!.play();
       };
+      mediaStream.current.onerror = (e) => {
+        console.error("🎥 Video error:", e);
+      };
+    } else if (stream && !mediaStream.current) {
+      console.log("⚠️ Stream received but video element not ready yet - will retry");
+      // Retry after a short delay to allow component to render
+      setTimeout(() => {
+        if (stream && mediaStream.current) {
+          console.log("🎥 Retry: Setting video stream...");
+          mediaStream.current.srcObject = stream;
+          mediaStream.current.onloadedmetadata = () => {
+            console.log("🎥 Retry: Video metadata loaded, starting playback...");
+            mediaStream.current!.play();
+          };
+        }
+      }, 100);
     }
-  }, [mediaStream, stream]);
+  }, [mediaStream, stream, sessionState]);
 
-  // Monitor mic permission during active session - stop if mic gets disabled
+  // Monitor mic permission during active session - pause if mic gets disabled, auto-reconnect when enabled
   useEffect(() => {
     if (sessionState === StreamingAvatarSessionState.CONNECTED) {
-      if (micState === "denied" && !isStoppingRef.current) {
-        console.log("🛑 Microphone disabled during session - stopping avatar");
+      if (micState === "denied" && !isStoppingRef.current && !micPaused) {
+        console.log("🛑 Microphone disabled during session - pausing avatar");
         isStoppingRef.current = true;
+        stopCallCountRef.current += 1;
+        console.log("🛑 Stop call #", stopCallCountRef.current);
         (async () => {
           await stopAvatar();
+          setMicPaused(true); // Enter paused state instead of going to lobby
           if (typeof window !== "undefined") {
-            window.alert("⚠️ Technical Issue Detected\nYour microphone has stopped working.\nPlease enable microphone access and start the session again.");
+            window.alert("⚠️ Technical Issue Detected\nYour microphone has stopped working.\nPlease enable microphone access - we'll reconnect automatically.");
           }
           isStoppingRef.current = false;
         })();
@@ -266,14 +329,77 @@ function InteractiveAvatar() {
       // Reset the flag when session is inactive
       isStoppingRef.current = false;
     }
-  }, [micState, sessionState, stopAvatar]);
+  }, [micState, sessionState, stopAvatar, micPaused]);
+
+  // Auto-reconnect when mic comes back online during paused state
+  useEffect(() => {
+    console.log("🔄 Auto-reconnect check:", { micPaused, micState, sessionWasActive, isStopping: isStoppingRef.current });
+    if (micPaused && micState === "granted" && sessionWasActive && !isStoppingRef.current) {
+      console.log("✅ Microphone re-enabled - reconnecting...");
+      // Add a small delay to ensure previous session is fully stopped
+      setTimeout(() => {
+        if (micPaused && micState === "granted" && sessionWasActive) {
+          console.log("🔄 Delayed reconnect starting...");
+          startSessionV2(true);
+        }
+      }, 500);
+    }
+  }, [micPaused, micState, sessionWasActive, startSessionV2]);
+
+  const handleBackToLobby = () => {
+    setMicPaused(false);
+    setSessionWasActive(false);
+    // Already stopped, just return to lobby
+  };
 
   return (
     <div className="w-full h-full flex flex-col">
       <div className="flex flex-col h-full bg-zinc-900 overflow-hidden">
+        {/* Back button - show when mic is paused */}
+        {micPaused && (
+          <div className="absolute top-4 left-4 z-50">
+            <Button
+              onClick={handleBackToLobby}
+              className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg shadow-lg"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Back
+            </Button>
+          </div>
+        )}
+
         <div className="relative flex-1 overflow-hidden flex flex-col items-center justify-center">
-          {sessionState !== StreamingAvatarSessionState.INACTIVE ? (
-            <AvatarVideo ref={mediaStream} />
+          {micPaused ? (
+            // Paused state - waiting for mic to come back
+            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
+              <div className="text-center max-w-md">
+                <div className="text-6xl mb-4">🎤</div>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  Waiting for Microphone
+                </h2>
+                <p className="text-zinc-400 mb-4">
+                  Please enable your microphone to continue the session.
+                  We'll reconnect automatically once it's enabled.
+                </p>
+                <div className="flex items-center justify-center gap-2 text-zinc-500">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                  <span>Monitoring microphone status...</span>
+                </div>
+              </div>
+            </div>
+          ) : sessionState !== StreamingAvatarSessionState.INACTIVE ? (
+            <AvatarVideo ref={setVideoRef} />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
               <AvatarConfig config={config} onConfigChange={setConfig} />
@@ -283,7 +409,7 @@ function InteractiveAvatar() {
         <div className="flex flex-col gap-3 items-center justify-center p-4 border-t border-zinc-700 w-full">
           {sessionState === StreamingAvatarSessionState.CONNECTED ? (
             <AvatarControls />
-          ) : sessionState === StreamingAvatarSessionState.INACTIVE ? (
+          ) : sessionState === StreamingAvatarSessionState.INACTIVE && !micPaused ? (
             <div className="flex flex-row gap-4">
               <Button 
                 onClick={() => startSessionV2(true)}
@@ -305,9 +431,9 @@ function InteractiveAvatar() {
                 Start Text Chat
               </Button> */}
             </div>
-          ) : (
+          ) : !micPaused ? (
             <LoadingIcon />
-          )}
+          ) : null}
         </div>
       </div>
       {/* Voice Chat and Text Chat controls hidden for now */}
