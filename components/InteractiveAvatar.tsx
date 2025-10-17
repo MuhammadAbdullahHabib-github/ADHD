@@ -132,6 +132,7 @@ function InteractiveAvatar() {
   const [isStarting, setIsStarting] = useState(false);
   const [micPaused, setMicPaused] = useState(false); // Track if session is paused due to mic issue
   const [sessionWasActive, setSessionWasActive] = useState(false); // Track if we had an active session
+  const [statusMessage, setStatusMessage] = useState("Checking microphone permissions...");
 
   const mediaStream = useRef<HTMLVideoElement>(null);
   
@@ -346,6 +347,28 @@ function InteractiveAvatar() {
     }
   }, [micPaused, micState, sessionWasActive, startSessionV2]);
 
+  // Cycle through status messages when mic is paused
+  useEffect(() => {
+    if (!micPaused) return;
+
+    const messages = [
+      "Checking microphone permissions...",
+      "Scanning for audio devices...",
+      "Waiting for microphone access...",
+      "Monitoring system audio...",
+      "Preparing to reconnect...",
+      "Almost ready to continue..."
+    ];
+
+    let index = 0;
+    const interval = setInterval(() => {
+      setStatusMessage(messages[index]);
+      index = (index + 1) % messages.length;
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [micPaused]);
+
   const handleBackToLobby = () => {
     setMicPaused(false);
     setSessionWasActive(false);
@@ -382,19 +405,51 @@ function InteractiveAvatar() {
         <div className="relative flex-1 overflow-hidden flex flex-col items-center justify-center">
           {micPaused ? (
             // Paused state - waiting for mic to come back
-            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
-              <div className="text-center max-w-md">
-                <div className="text-6xl mb-4">🎤</div>
-                <h2 className="text-2xl font-bold text-white mb-2">
+            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-6 relative overflow-hidden">
+              {/* Subtle background animation */}
+              <div className="absolute inset-0 opacity-5">
+                <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-blue-500 rounded-full animate-ping"></div>
+                <div className="absolute top-3/4 right-1/4 w-24 h-24 bg-green-500 rounded-full animate-ping" style={{animationDelay: '1s'}}></div>
+                <div className="absolute bottom-1/4 left-1/3 w-20 h-20 bg-yellow-500 rounded-full animate-ping" style={{animationDelay: '2s'}}></div>
+              </div>
+              <div className="text-center max-w-lg">
+                {/* Animated microphone with pulsing effect */}
+                <div className="relative mb-6">
+                  <div className="text-8xl animate-bounce">🎤</div>
+                  <div className="absolute inset-0 text-8xl animate-ping opacity-20">🎤</div>
+                </div>
+                
+                <h2 className="text-3xl font-bold text-white mb-3 animate-pulse">
                   Waiting for Microphone
                 </h2>
-                <p className="text-zinc-400 mb-4">
+                
+                <p className="text-zinc-300 mb-6 text-lg">
                   Please enable your microphone to continue the session.
-                  We'll reconnect automatically once it's enabled.
+                  <br />
+                  <span className="text-blue-400 font-semibold">We'll reconnect automatically once it's enabled.</span>
                 </p>
-                <div className="flex items-center justify-center gap-2 text-zinc-500">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                  <span>Monitoring microphone status...</span>
+                
+                {/* Animated status indicator */}
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                    </div>
+                    <span className="text-zinc-400 font-medium">Monitoring microphone status...</span>
+                  </div>
+                  
+                  {/* Progress bar animation */}
+                  <div className="w-64 h-1 bg-zinc-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full animate-pulse"></div>
+                  </div>
+                  
+                  {/* Rotating status text */}
+                  <div className="text-sm text-zinc-500 animate-pulse">
+                    <span className="inline-block animate-spin mr-2">⟳</span>
+                    {statusMessage}
+                  </div>
                 </div>
               </div>
             </div>
