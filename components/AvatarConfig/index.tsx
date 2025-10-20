@@ -133,6 +133,17 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
         />
       </Field>
       */}
+      <Field label="Emotion">
+            <Select
+              isSelected={(option) => option === config.voice?.emotion}
+              options={Object.values(VoiceEmotion)}
+              renderOption={(option) => option}
+              value={config.voice?.emotion}
+              onSelect={(option) =>
+                onChange("voice", { ...config.voice, emotion: option })
+              }
+            />
+          </Field>
 
       {showMore && (
         <>
@@ -149,17 +160,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
             />
           </Field>
           */}
-          <Field label="Emotion">
-            <Select
-              isSelected={(option) => option === config.voice?.emotion}
-              options={Object.values(VoiceEmotion)}
-              renderOption={(option) => option}
-              value={config.voice?.emotion}
-              onSelect={(option) =>
-                onChange("voice", { ...config.voice, emotion: option })
-              }
-            />
-          </Field>
+          
           {/* 
           <Field label="ElevenLabs Model">
             <Select
@@ -196,7 +197,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
         className="text-zinc-400 text-sm cursor-pointer w-full text-center bg-transparent"
         onClick={() => setShowMore(!showMore)}
       >
-        {showMore ? "Show less" : "Show more..."}
+        {/* {showMore ? "Show less" : "Show more..."} */}
       </button>
     </div>
   );
