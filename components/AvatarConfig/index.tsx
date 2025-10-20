@@ -54,6 +54,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
 
   return (
     <div className="relative flex flex-col gap-4 w-full h-full max-w-2xl mx-auto py-8 overflow-y-auto px-4">
+      {/*
       <Field label="Custom Knowledge Base ID">
         <Input
           placeholder="Enter custom knowledge base ID"
@@ -61,14 +62,15 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           onChange={(value) => onChange("knowledgeId", value)}
         />
       </Field>
-      <Field label="Avatar ID">
+      */}
+      <Field label="Avatar">
         <Select
           isSelected={(option) =>
             typeof option === "string"
               ? !!selectedAvatar?.isCustom
               : option.avatar_id === selectedAvatar?.avatarId
           }
-          options={[...AVATARS, "CUSTOM"]}
+          options={[...AVATARS /*, "CUSTOM"*/]}
           placeholder="Select Avatar"
           renderOption={(option) => {
             return typeof option === "string"
@@ -96,6 +98,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           />
         </Field>
       )}
+
       <Field label="Language">
         <Select
           isSelected={(option) => option.value === config.language}
@@ -108,6 +111,8 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           onSelect={(option) => onChange("language", option.value)}
         />
       </Field>
+      
+       {/*
       <Field label="Avatar Quality">
         <Select
           isSelected={(option) => option === config.quality}
@@ -117,6 +122,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           onSelect={(option) => onChange("quality", option)}
         />
       </Field>
+     
       <Field label="Voice Chat Transport">
         <Select
           isSelected={(option) => option === config.voiceChatTransport}
@@ -126,9 +132,13 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           onSelect={(option) => onChange("voiceChatTransport", option)}
         />
       </Field>
+      */}
+
       {showMore && (
         <>
+          {/* Voice Settings Header 
           <h1 className="text-zinc-100 w-full text-center mt-5">Voice Settings</h1>
+          
           <Field label="Custom Voice ID">
             <Input
               placeholder="Enter custom voice ID"
@@ -138,6 +148,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
               }
             />
           </Field>
+          */}
           <Field label="Emotion">
             <Select
               isSelected={(option) => option === config.voice?.emotion}
@@ -149,6 +160,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
               }
             />
           </Field>
+          {/* 
           <Field label="ElevenLabs Model">
             <Select
               isSelected={(option) => option === config.voice?.model}
@@ -160,7 +172,9 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
               }
             />
           </Field>
+          STT Settings Header 
           <h1 className="text-zinc-100 w-full text-center mt-5">STT Settings</h1>
+          
           <Field label="Provider">
             <Select
               isSelected={(option) => option === config.sttSettings?.provider}
@@ -175,6 +189,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
               }
             />
           </Field>
+          */}
         </>
       )}
       <button
