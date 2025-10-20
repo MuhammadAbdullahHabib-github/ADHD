@@ -70,7 +70,6 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
               ? !!selectedAvatar?.isCustom
               : option.avatar_id === selectedAvatar?.avatarId
           }
-          //
           options={[...AVATARS /*, "CUSTOM"*/]}
           placeholder="Select Avatar"
           renderOption={(option) => {
