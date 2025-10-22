@@ -32,26 +32,6 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
   };
   const [showMore, setShowMore] = useState<boolean>(false);
 
-  const selectedAvatar = useMemo(() => {
-    const avatar = AVATARS.find(
-      (avatar) => avatar.avatar_id === config.avatarName,
-    );
-
-    if (!avatar) {
-      return {
-        isCustom: true,
-        name: "Custom Avatar ID",
-        avatarId: null,
-      };
-    } else {
-      return {
-        isCustom: false,
-        name: avatar.name,
-        avatarId: avatar.avatar_id,
-      };
-    }
-  }, [config.avatarName]);
-
   return (
     <div className="relative flex flex-col gap-4 w-full h-full max-w-2xl mx-auto py-8 overflow-y-auto px-4">
       {/*
@@ -64,40 +44,31 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
       </Field>
       */}
       <Field label="Avatar">
-        <Select
-          isSelected={(option) =>
-            typeof option === "string"
-              ? !!selectedAvatar?.isCustom
-              : option.avatar_id === selectedAvatar?.avatarId
-          }
-          options={[...AVATARS /*, "CUSTOM"*/]}
-          placeholder="Select Avatar"
-          renderOption={(option) => {
-            return typeof option === "string"
-              ? "Custom Avatar ID"
-              : option.name;
-          }}
-          value={
-            selectedAvatar?.isCustom ? "Custom Avatar ID" : selectedAvatar?.name
-          }
-          onSelect={(option) => {
-            if (typeof option === "string") {
-              onChange("avatarName", "");
-            } else {
-              onChange("avatarName", option.avatar_id);
-            }
-          }}
-        />
+        <div className="flex gap-2 w-full">
+          <button
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              config.avatarName === "Ann_Therapist_public"
+                ? "text-white"
+                : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+            }`}
+            style={config.avatarName === "Ann_Therapist_public" ? { backgroundColor: '#7559ff' } : {}}
+            onClick={() => onChange("avatarName", "Ann_Therapist_public")}
+          >
+            Ann Therapist (Female)
+          </button>
+          <button
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              config.avatarName === "Shawn_Therapist_public"
+                ? "text-white"
+                : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+            }`}
+            style={config.avatarName === "Shawn_Therapist_public" ? { backgroundColor: '#7559ff' } : {}}
+            onClick={() => onChange("avatarName", "Shawn_Therapist_public")}
+          >
+            Shawn Therapist (Male)
+          </button>
+        </div>
       </Field>
-      {selectedAvatar?.isCustom && (
-        <Field label="Custom Avatar ID">
-          <Input
-            placeholder="Enter custom avatar ID"
-            value={config.avatarName}
-            onChange={(value) => onChange("avatarName", value)}
-          />
-        </Field>
-      )}
 
       <Field label="Language">
         <Select
@@ -133,17 +104,6 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
         />
       </Field>
       */}
-      <Field label="Emotion">
-            <Select
-              isSelected={(option) => option === config.voice?.emotion}
-              options={Object.values(VoiceEmotion)}
-              renderOption={(option) => option}
-              value={config.voice?.emotion}
-              onSelect={(option) =>
-                onChange("voice", { ...config.voice, emotion: option })
-              }
-            />
-          </Field>
 
       {showMore && (
         <>
