@@ -7,6 +7,11 @@ export const AVATARS = [
     avatar_id: "Shawn_Therapist_public",
     name: "Shawn Therapist (Male)",
   },
+  {
+    avatar_id: "SilasHR_public",
+    name: "Shawn Therapist (Male)",
+  },
+
   // {
   //   avatar_id: "Bryan_FitnessCoach_public",
   //   name: "Bryan Fitness Coach",

@@ -58,14 +58,14 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           </button>
           <button
             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              config.avatarName === "Shawn_Therapist_public"
+              config.avatarName === "Graham_Chair_Sitting_public"
                 ? "text-white"
                 : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
             }`}
-            style={config.avatarName === "Shawn_Therapist_public" ? { backgroundColor: '#7559ff' } : {}}
-            onClick={() => onChange("avatarName", "Shawn_Therapist_public")}
+            style={config.avatarName === "Graham_Chair_Sitting_public" ? { backgroundColor: '#7559ff' } : {}}
+            onClick={() => onChange("avatarName", "Graham_Chair_Sitting_public")}
           >
-            Shawn Therapist (Male)
+            Graham Therapist (Male)
           </button>
         </div>
       </Field>
