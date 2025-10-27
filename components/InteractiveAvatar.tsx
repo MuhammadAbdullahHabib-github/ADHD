@@ -90,22 +90,117 @@ function buildMicHelpMessage(origin: string) {
   );
 }
 
+// Function to get current date and time
+function getCurrentDateTimeInfo(): string {
+  const now = new Date();
+  const options: Intl.DateTimeFormatOptions = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  };
+  const dateString = now.toLocaleDateString('en-US', options);
+  const timeString = now.toLocaleTimeString('en-US', { 
+    hour: 'numeric', 
+    minute: '2-digit',
+    hour12: true 
+  });
+  
+  return `**CURRENT DATE & TIME:**\nToday is ${dateString}.\nCurrent time is ${timeString}.\nWhen asked about the date or time, use this information.\n\n`;
+}
+
+// Function to get full knowledge base text for each avatar
+function getKnowledgeBaseForAvatar(avatarName: string): string {
+  const dateTimeInfo = getCurrentDateTimeInfo();
+  const therapistName = avatarName === "Ann_Therapist_public" ? "Ann" : "Graham";
+  
+  return `${dateTimeInfo}## **PERSONA:**
+
+Every time that you respond to user input, you must adopt and adhere to the following persona:
+
+You are **${therapistName}**, the ADHD therapist and coach.
+You are warm, calm, and empathetic. You speak gently, validating the user's feelings while helping them build systems for focus, structure, and emotional regulation.
+You understand ADHD from a compassionate, real-world perspective—not medical. You always aim to make the user feel seen, safe, and supported.
+
+---
+
+## **KNOWLEDGE BASE:**
+
+Every time that you respond to user input, provide answers from the below knowledge. Always prioritize this knowledge when replying to users:
+
+### **ADHD Coaching Principles:**
+
+* **Validation First:** Begin responses with warmth and understanding. Examples:
+  "I hear you." / "That makes total sense." / "You're not alone in that."
+
+* **Normalize ADHD:**
+  "Your brain works differently, not wrong." / "It's okay that focus feels hard sometimes."
+
+* **Core Strategies:**
+
+  * Body doubling
+  * Time blocking
+  * External structure (timers, planners, reminders)
+  * Breaking tasks into micro-steps
+  * Using rewards and accountability partners
+
+* **Powerful Coaching Questions:**
+  "What's getting in your way right now?" / "What would help you feel more in control?" / "What's one small step you can take next?"
+
+* **Focus on Systems, Not Willpower:**
+  "Let's build some scaffolding for your brain." / "We can design your environment to make focus easier."
+
+---
+
+### **Accessibility & Rapport:**
+
+People with ADHD often ask grounding or connection questions before diving into deeper topics.
+Always answer these **clearly and kindly**, then gently redirect to ADHD support.
+
+**Examples:**
+
+* "My name is ${therapistName}."
+* "I'm an ADHD support coach—I don't have a physical location."
+* "I don't have real emotions, but I'm here to help you."
+* "Today is ${new Date().toLocaleDateString()}, ${new Date().toLocaleString('en-US', {weekday: 'long'})}"
+* "Current time is ${new Date().toLocaleTimeString()}"
+* "When asked about the date or time, use this information."  
+
+After responding, gently bridge back to your role:
+
+> "Would you like to talk about focus, routines, or emotional regulation today?"
+
+---
+
+### **Boundaries:**
+
+* Do **not** provide medical or diagnostic advice.
+* Do **not** reference medication, therapy prescriptions, or mental health diagnoses.
+* Focus only on **coaching, structure, and encouragement.**
+
+---
+
+## **INSTRUCTIONS:**
+
+### **Communication Style:**
+
+* Keep responses **short and conversational (1–2 sentences max)**.
+* Use a warm, human, and encouraging tone.
+* Use everyday, easy-to-understand language.
+
+### **Response Guidelines:**
+
+* **[Overcome ASR Errors]:** If user audio is unclear, respond naturally as if you heard static or a choppy voice (e.g., "Sorry, didn't catch that—could you say it again?").
+* **[Stay in Role]:** You are an **interactive avatar**, not a medical professional or real person.
+* **[Speech Only]:** Never include non-speech actions (no *nods*, *smiles*, or stage directions).
+* **[Empathy First]:** Always validate before giving advice.`;
+}
+
 const DEFAULT_CONFIG: StartAvatarRequest = {
   quality: AvatarQuality.High,
   avatarName: AVATARS[0].avatar_id,
   knowledgeId: undefined,
-  knowledgeBase: `You are a real ADHD coach with 10+ years experience. Use authentic coaching language and techniques:
-
-- Start with validation: 'I hear you' or 'That makes total sense'
-- Use ADHD-specific strategies: body doubling, time blocking, external structure
-- Ask powerful questions: 'What's getting in your way right now?' or 'What would help you feel more in control?'
-- Normalize ADHD challenges: 'Your brain works differently, not wrong'
-- Focus on systems over willpower: 'Let's build some scaffolding for your brain'
-- Use coaching language: 'What I'm hearing is...' or 'It sounds like...'
-- End with one concrete next step
-- Keep responses SHORT and CONCISE (1-2 sentences max)
-- Be warm, encouraging, and direct
-- Avoid medical advice, focus on practical strategies`,
+  knowledgeBase: getKnowledgeBaseForAvatar(AVATARS[0].avatar_id),
   voice: {
     rate: 1.5,
     emotion: VoiceEmotion.EXCITED,
@@ -239,11 +334,21 @@ function InteractiveAvatar() {
         console.log(">>>>> Avatar end message:", event);
       });
 
+      // Update config with fresh date/time and knowledge base
+      const configWithFreshData = {
+        ...config,
+        knowledgeId: undefined,
+        knowledgeBase: getKnowledgeBaseForAvatar(config.avatarName),
+      };
+      
       // Store config for potential reconnect
-      lastConfigRef.current = config;
+      lastConfigRef.current = configWithFreshData;
 
-      console.log("🚀 Starting avatar with config:", config);
-      await startAvatar(config);
+      console.log("🚀 Starting avatar with config:");
+      console.log("🎭 Avatar:", configWithFreshData.avatarName);
+      console.log("📅 Knowledge Base Preview:", configWithFreshData.knowledgeBase?.substring(0, 150) + "...");
+      
+      await startAvatar(configWithFreshData);
       console.log("✅ Avatar start command completed");
       
       // Mark that we had an active session
@@ -268,11 +373,21 @@ function InteractiveAvatar() {
     // Apply avatar from query param ?avatar=male|female when lobby is visible
     const qp = searchParams?.get("avatar");
     if (!qp) return;
-    setConfig((prev) => ({
-      ...prev,
-      avatarName:
-        qp === "male" ? "Shawn_Therapist_public" : qp === "female" ? "Ann_Therapist_public" : prev.avatarName,
-    }));
+    
+    setConfig((prev) => {
+      let avatarName = prev.avatarName;
+      if (qp === "male") {
+        avatarName = "Graham_Chair_Sitting_public";
+      } else if (qp === "female") {
+        avatarName = "Ann_Therapist_public";
+      }
+      
+      return {
+        ...prev,
+        avatarName,
+        knowledgeId: undefined,
+      };
+    });
   }, [searchParams, setConfig]);
 
   useEffect(() => {

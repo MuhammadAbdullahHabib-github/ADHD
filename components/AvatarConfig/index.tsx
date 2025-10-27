@@ -30,6 +30,12 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
   ) => {
     onConfigChange({ ...config, [key]: value });
   };
+  
+  // Function to update avatar (knowledgeBase will be generated dynamically at session start)
+  const changeAvatar = (avatarName: string) => {
+    onConfigChange({ ...config, avatarName, knowledgeId: undefined });
+  };
+  
   const [showMore, setShowMore] = useState<boolean>(false);
 
   return (
@@ -52,7 +58,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
                 : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
             }`}
             style={config.avatarName === "Ann_Therapist_public" ? { backgroundColor: '#7559ff' } : {}}
-            onClick={() => onChange("avatarName", "Ann_Therapist_public")}
+            onClick={() => changeAvatar("Ann_Therapist_public")}
           >
             Ann Therapist (Female)
           </button>
@@ -63,7 +69,7 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
                 : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
             }`}
             style={config.avatarName === "Graham_Chair_Sitting_public" ? { backgroundColor: '#7559ff' } : {}}
-            onClick={() => onChange("avatarName", "Graham_Chair_Sitting_public")}
+            onClick={() => changeAvatar("Graham_Chair_Sitting_public")}
           >
             Graham Therapist (Male)
           </button>
