@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Avatar Embed Demo</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #0f1116;
+        color: white;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+      iframe {
+        width: 100%;
+        min-height: 800px;
+        border: none;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+      .token-input {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .token-input input {
+        flex: 1;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #333;
+        background: #1a1d25;
+        color: white;
+      }
+      .token-input button {
+        padding: 10px 18px;
+        border-radius: 8px;
+        border: none;
+        background: #7559ff;
+        color: white;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Local Avatar Embed Demo</h1>
+    <p>
+      Enter any token, click “Load”, and we will render the iframe with that
+      token query param. This page is only for local testing.
+    </p>
+
+    <div class="token-input">
+      <input
+        id="token"
+        placeholder="demo-token-123"
+        value="demo-token-123"
+        autocomplete="off"
+      />
+      <button id="load">Load</button>
+    </div>
+
+    <iframe
+      id="avatar-frame"
+      src="http://localhost:3000/embed?token=demo-token-123"
+      allow="microphone; camera"
+      loading="lazy"
+    ></iframe>
+
+    <script>
+      const input = document.getElementById("token");
+      const button = document.getElementById("load");
+      const iframe = document.getElementById("avatar-frame");
+
+      button.addEventListener("click", () => {
+        const token = encodeURIComponent(input.value.trim());
+        if (!token) {
+          alert("Enter a token value first.");
+          return;
+        }
+        iframe.src = `http://localhost:3000/embed?token=${token}`;
+      });
+    </script>
+  </body>
+</html>

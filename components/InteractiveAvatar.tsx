@@ -230,6 +230,18 @@ function InteractiveAvatar() {
   const [statusMessage, setStatusMessage] = useState("Checking microphone permissions...");
 
   const mediaStream = useRef<HTMLVideoElement>(null);
+  const searchParams = useSearchParams();
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
+  const [clientToken, setClientToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [minutesRemaining, setMinutesRemaining] = useState<number | null>(null);
+  const [totalAllocatedMinutes, setTotalAllocatedMinutes] = useState<number | null>(null);
+  const [timeExpired, setTimeExpired] = useState(false);
+  const [isVerifyingToken, setIsVerifyingToken] = useState(false);
+  const minutesPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasExpiredRef = useRef(false);
+  const tokenRef = useRef<string | null>(null);
+  const queryToken = searchParams?.get("token") ?? null;
   
   // Callback to ensure video element is properly attached
   const setVideoRef = useCallback((element: HTMLVideoElement | null) => {
@@ -246,11 +258,18 @@ function InteractiveAvatar() {
       };
     }
   }, [stream]);
-  const searchParams = useSearchParams();
   const { state: micState, request: requestMic } = useMicPermission();
   const isStoppingRef = useRef(false);
   const stopCallCountRef = useRef(0);
   const lastConfigRef = useRef<StartAvatarRequest>(DEFAULT_CONFIG); // Store last config for reconnect
+
+  useEffect(() => {
+    if (queryToken && queryToken !== clientToken) {
+      setClientToken(queryToken);
+      tokenRef.current = queryToken;
+      setTokenError(null);
+    }
+  }, [queryToken, clientToken]);
 
   async function fetchAccessToken() {
     try {
@@ -268,9 +287,177 @@ function InteractiveAvatar() {
     }
   }
 
+  const stopMinutesPolling = useCallback(() => {
+    if (minutesPollingRef.current) {
+      clearInterval(minutesPollingRef.current);
+      minutesPollingRef.current = null;
+    }
+  }, []);
+
+  const expireBillingToken = useCallback(async () => {
+    const activeToken = tokenRef.current ?? clientToken ?? queryToken;
+    if (!activeToken) {
+      return;
+    }
+
+    try {
+      await fetch("/api/billing/expire", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: activeToken }),
+      });
+    } catch (error) {
+      console.error("Failed to expire billing token:", error);
+    }
+  }, [clientToken, queryToken]);
+
+  const handleTimeExpired = useCallback(async () => {
+    if (hasExpiredRef.current) {
+      return;
+    }
+    hasExpiredRef.current = true;
+    setTimeExpired(true);
+    setBillingMessage(
+      "Your session time has ended. Please purchase more minutes to continue.",
+    );
+    stopMinutesPolling();
+    try {
+      await expireBillingToken();
+    } catch (error) {
+      console.error("Failed to expire token after timeout:", error);
+    }
+    try {
+      await stopAvatar();
+    } catch (error) {
+      console.error("Failed to stop avatar after timeout:", error);
+    }
+  }, [expireBillingToken, stopAvatar, stopMinutesPolling]);
+
+  const parseMinutesValue = (data: any) => {
+    if (typeof data?.minutes_remaining === "number") {
+      return data.minutes_remaining;
+    }
+    if (typeof data?.minutes === "number") {
+      return data.minutes;
+    }
+    if (typeof data?.remaining === "number") {
+      return data.remaining;
+    }
+    return null;
+  };
+
+  const fetchMinutesRemaining = useCallback(
+    async (extend = false) => {
+      const activeToken = tokenRef.current ?? clientToken ?? queryToken;
+      if (!activeToken) {
+        return null;
+      }
+
+      try {
+        const response = await fetch("/api/billing/minutes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: activeToken, extend }),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          console.error("Failed to fetch minutes:", text);
+          return null;
+        }
+
+        const data = await response.json();
+        const minutes = parseMinutesValue(data);
+
+        if (typeof minutes === "number") {
+          const sanitized = Math.max(minutes, 0);
+          setMinutesRemaining(sanitized);
+          setTotalAllocatedMinutes((prev) => {
+            if (prev === null || sanitized > prev) {
+              return sanitized;
+            }
+            return prev;
+          });
+          if (sanitized <= 0) {
+            await handleTimeExpired();
+          }
+        }
+
+        return minutes ?? null;
+      } catch (error) {
+        console.error("Minutes polling error:", error);
+        return null;
+      }
+    },
+    [clientToken, queryToken, handleTimeExpired],
+  );
+
+  const startMinutesPolling = useCallback(() => {
+    stopMinutesPolling();
+    minutesPollingRef.current = setInterval(() => {
+      fetchMinutesRemaining().catch((error) => {
+        console.error("Minutes polling loop error:", error);
+      });
+    }, 20000);
+  }, [fetchMinutesRemaining, stopMinutesPolling]);
+
+  const verifyBillingToken = useCallback(async () => {
+    const activeToken = tokenRef.current ?? clientToken ?? queryToken;
+    if (!activeToken) {
+      setTokenError(
+        "Purchase token missing. Please open this page from your purchase link.",
+      );
+      return false;
+    }
+
+    setIsVerifyingToken(true);
+    setTokenError(null);
+
+    try {
+      const response = await fetch("/api/billing/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: activeToken }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const message =
+          (typeof data?.error === "string" && data.error) ||
+          "Unable to verify your purchase token.";
+        setTokenError(message);
+        return false;
+      }
+
+      tokenRef.current = activeToken;
+      return true;
+    } catch (error) {
+      console.error("Token verification error:", error);
+      setTokenError(
+        "We couldn't verify your token. Please refresh and try again.",
+      );
+      return false;
+    } finally {
+      setIsVerifyingToken(false);
+    }
+  }, [clientToken, queryToken]);
+
   const startSessionV2 = useMemoizedFn(async (isVoiceChat: boolean) => {
     try {
       setIsStarting(true);
+      setBillingMessage(null);
+      setTokenError(null);
+      setTimeExpired(false);
+      hasExpiredRef.current = false;
+
+      const tokenIsValid = await verifyBillingToken();
+      if (!tokenIsValid) {
+        setIsStarting(false);
+        return;
+      }
+
       // If voice chat requested, acquire mic permission FIRST to trigger prompt immediately
       if (isVoiceChat) {
         let ok = micState === "granted";
@@ -350,6 +537,10 @@ function InteractiveAvatar() {
       
       await startAvatar(configWithFreshData);
       console.log("✅ Avatar start command completed");
+      setBillingMessage(null);
+      setTimeExpired(false);
+      await fetchMinutesRemaining();
+      startMinutesPolling();
       
       // Mark that we had an active session
       setSessionWasActive(true);
@@ -366,6 +557,7 @@ function InteractiveAvatar() {
   });
 
   useUnmount(() => {
+    stopMinutesPolling();
     stopAvatar();
   });
 
@@ -484,11 +676,36 @@ function InteractiveAvatar() {
     return () => clearInterval(interval);
   }, [micPaused]);
 
+  useEffect(() => {
+    if (sessionState !== StreamingAvatarSessionState.CONNECTED) {
+      stopMinutesPolling();
+      setMinutesRemaining(null);
+      setTotalAllocatedMinutes(null);
+      if (!timeExpired) {
+        setBillingMessage(null);
+      }
+      hasExpiredRef.current = false;
+    }
+  }, [sessionState, stopMinutesPolling, timeExpired]);
+
   const handleBackToLobby = () => {
     setMicPaused(false);
     setSessionWasActive(false);
     // Already stopped, just return to lobby
   };
+
+  const minutesProgressPct =
+    totalAllocatedMinutes &&
+    totalAllocatedMinutes > 0 &&
+    minutesRemaining !== null
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round((minutesRemaining / totalAllocatedMinutes) * 100),
+          ),
+        )
+      : null;
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -604,6 +821,107 @@ function InteractiveAvatar() {
           ) : !micPaused ? (
             <LoadingIcon />
           ) : null}
+          {(tokenError ||
+            billingMessage ||
+            isVerifyingToken ||
+            (minutesRemaining !== null &&
+              sessionState === StreamingAvatarSessionState.CONNECTED)) && (
+            <div className="w-full max-w-xl space-y-3 text-left">
+              {tokenError ? (
+                <div className="flex gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100">
+                  <div className="text-xl font-semibold text-red-300">!</div>
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-red-200">
+                      Token Required
+                    </p>
+                    <p className="text-sm text-red-100/90">{tokenError}</p>
+                  </div>
+                </div>
+              ) : null}
+              {billingMessage ? (
+                <div className="flex gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-amber-100">
+                  <div className="text-xl font-semibold text-amber-300">⚠️</div>
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-amber-200">
+                      Session Notice
+                    </p>
+                    <p className="text-sm text-amber-50/90">{billingMessage}</p>
+                  </div>
+                </div>
+              ) : null}
+              {isVerifyingToken ? (
+                <div className="flex gap-3 rounded-2xl border border-indigo-400/40 bg-indigo-500/10 px-4 py-3 text-indigo-100">
+                  <div className="w-5 h-5 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mt-1" />
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-indigo-200">
+                      Verifying Purchase
+                    </p>
+                    <p className="text-sm text-indigo-50/90">
+                      Validating your token with the billing server...
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+              {minutesRemaining !== null &&
+              sessionState === StreamingAvatarSessionState.CONNECTED ? (
+                <div
+                  className={`rounded-2xl border px-5 py-4 text-white ${
+                    timeExpired
+                      ? "border-red-500/40 bg-gradient-to-r from-red-600/40 to-orange-500/20"
+                      : "border-emerald-400/40 bg-gradient-to-r from-emerald-500/20 via-cyan-500/10 to-sky-500/10"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-6">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">
+                        Session Timer
+                      </p>
+                      <p className="text-3xl font-semibold mt-1">
+                        {minutesRemaining > 0
+                          ? `${minutesRemaining}m left`
+                          : "Expired"}
+                      </p>
+                      <p className="text-sm text-white/80">
+                        {minutesRemaining > 0
+                          ? "We’ll pause the avatar automatically once time runs out."
+                          : "Please purchase more minutes to start a new session."}
+                      </p>
+                    </div>
+                    <div className="text-right min-w-[120px]">
+                      <p
+                        className={`text-xs font-semibold uppercase ${
+                          timeExpired ? "text-red-100" : "text-emerald-100"
+                        }`}
+                      >
+                        {timeExpired ? "Session Ended" : "Active"}
+                      </p>
+                      {minutesProgressPct !== null && !timeExpired ? (
+                        <p className="text-2xl font-semibold text-white">
+                          {minutesProgressPct}%
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 w-full rounded-full bg-white/15 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        timeExpired ? "bg-red-300" : "bg-white"
+                      }`}
+                      style={{
+                        width:
+                          minutesProgressPct !== null
+                            ? `${minutesProgressPct}%`
+                            : timeExpired
+                              ? "0%"
+                              : "100%",
+                        transition: "width 0.5s ease",
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
       {/* Voice Chat and Text Chat controls hidden for now */}
