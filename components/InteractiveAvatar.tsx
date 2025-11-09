@@ -319,9 +319,7 @@ function InteractiveAvatar() {
     }
     hasExpiredRef.current = true;
     setTimeExpired(true);
-    setBillingMessage(
-      "Your session time has ended. Please purchase more minutes to continue.",
-    );
+    // Don't set billingMessage - we'll show a single consolidated notification
     stopMinutesPolling();
     try {
       await expireBillingToken();
@@ -422,15 +420,49 @@ function InteractiveAvatar() {
         body: JSON.stringify({ token: activeToken }),
       });
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
+      // Parse response body
+      let data: any = {};
+      try {
+        const text = await response.text();
+        if (text) {
+          data = JSON.parse(text);
+        }
+      } catch (parseError) {
+        console.error("Failed to parse verification response:", parseError);
+        setTokenError("Invalid response from verification server.");
+        return false;
+      }
+
+      // Check if token is expired
+      if (data?.expired === true || data?.is_expired === true || data?.token_expired === true) {
+        setTokenError(
+          "Your purchase token has expired. Please use a valid purchase link to access your session."
+        );
+        return false;
+      }
+
+      // Check if response indicates success
+      // Handle various response formats: true, {success: true}, {verified: true}, etc.
+      const isSuccess = 
+        response.ok && (
+          data === true || 
+          data === "true" ||
+          data?.success === true ||
+          data?.verified === true ||
+          data?.valid === true ||
+          (typeof data === "object" && Object.keys(data).length === 0 && response.status === 200)
+        );
+
+      if (!isSuccess) {
         const message =
           (typeof data?.error === "string" && data.error) ||
-          "Unable to verify your purchase token.";
+          (typeof data?.message === "string" && data.message) ||
+          "Unable to verify your purchase token. Please ensure you're using a valid purchase link.";
         setTokenError(message);
         return false;
       }
 
+      console.log("✅ Token verified successfully:", activeToken);
       tokenRef.current = activeToken;
       return true;
     } catch (error) {
@@ -452,10 +484,37 @@ function InteractiveAvatar() {
       setTimeExpired(false);
       hasExpiredRef.current = false;
 
+      // Step 1: Verify token
       const tokenIsValid = await verifyBillingToken();
       if (!tokenIsValid) {
         setIsStarting(false);
         return;
+      }
+
+      // Step 2: Check minutes remaining and token expiry BEFORE starting session
+      const activeToken = tokenRef.current ?? clientToken ?? queryToken;
+      if (activeToken) {
+        const minutes = await fetchMinutesRemaining();
+        
+        // Check if minutes are zero or negative
+        if (minutes !== null && minutes <= 0) {
+          setTokenError(
+            "Your session has no remaining minutes. Please purchase more minutes to continue."
+          );
+          setIsStarting(false);
+          return;
+        }
+
+        // Check if token is expired (verify endpoint should handle this, but double-check)
+        // If verify returned false, we already returned above
+        // Additional check: if minutes fetch failed, token might be expired
+        if (minutes === null) {
+          setTokenError(
+            "Unable to verify your session status. Please refresh and try again."
+          );
+          setIsStarting(false);
+          return;
+        }
       }
 
       // If voice chat requested, acquire mic permission FIRST to trigger prompt immediately
@@ -832,7 +891,7 @@ function InteractiveAvatar() {
                   <div className="text-xl font-semibold text-red-300">!</div>
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-wide text-red-200">
-                      Token Required
+                      Access Required
                     </p>
                     <p className="text-sm text-red-100/90">{tokenError}</p>
                   </div>
@@ -864,61 +923,69 @@ function InteractiveAvatar() {
               ) : null}
               {minutesRemaining !== null &&
               sessionState === StreamingAvatarSessionState.CONNECTED ? (
-                <div
-                  className={`rounded-2xl border px-5 py-4 text-white ${
-                    timeExpired
-                      ? "border-red-500/40 bg-gradient-to-r from-red-600/40 to-orange-500/20"
-                      : "border-emerald-400/40 bg-gradient-to-r from-emerald-500/20 via-cyan-500/10 to-sky-500/10"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-6">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">
-                        Session Timer
-                      </p>
-                      <p className="text-3xl font-semibold mt-1">
-                        {minutesRemaining > 0
-                          ? `${minutesRemaining}m left`
-                          : "Expired"}
-                      </p>
-                      <p className="text-sm text-white/80">
-                        {minutesRemaining > 0
-                          ? "We’ll pause the avatar automatically once time runs out."
-                          : "Please purchase more minutes to start a new session."}
-                      </p>
-                    </div>
-                    <div className="text-right min-w-[120px]">
-                      <p
-                        className={`text-xs font-semibold uppercase ${
-                          timeExpired ? "text-red-100" : "text-emerald-100"
-                        }`}
-                      >
-                        {timeExpired ? "Session Ended" : "Active"}
-                      </p>
-                      {minutesProgressPct !== null && !timeExpired ? (
-                        <p className="text-2xl font-semibold text-white">
-                          {minutesProgressPct}%
+                // Show single consolidated notification when expired, otherwise show timer
+                timeExpired ? (
+                  <div className="rounded-2xl border border-red-500/40 bg-gradient-to-r from-red-600/40 to-orange-500/20 px-5 py-4 text-white">
+                    <div className="flex items-start gap-4">
+                      <div className="text-2xl font-semibold text-red-300 mt-0.5">⚠</div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold uppercase tracking-[0.15em] text-red-100 mb-2">
+                          Session Expired
                         </p>
-                      ) : null}
+                        <p className="text-base text-white/90 mb-3">
+                          Your session time has ended. Please purchase more minutes to continue your session.
+                        </p>
+                        <div className="mt-3 pt-3 border-t border-red-400/20">
+                          <p className="text-xs text-red-100/80">
+                            To start a new session, please visit your purchase link to add more minutes.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-4 h-2 w-full rounded-full bg-white/15 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        timeExpired ? "bg-red-300" : "bg-white"
-                      }`}
-                      style={{
-                        width:
-                          minutesProgressPct !== null
-                            ? `${minutesProgressPct}%`
-                            : timeExpired
-                              ? "0%"
+                ) : (
+                  <div className="rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500/20 via-cyan-500/10 to-sky-500/10 px-5 py-4 text-white">
+                    <div className="flex items-start justify-between gap-6">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">
+                          Session Timer
+                        </p>
+                        <p className="text-3xl font-semibold mt-1">
+                          {minutesRemaining > 0
+                            ? `${minutesRemaining}m left`
+                            : "Expired"}
+                        </p>
+                        <p className="text-sm text-white/80">
+                          {minutesRemaining > 0
+                            ? "We'll pause the avatar automatically once time runs out."
+                            : "Please purchase more minutes to start a new session."}
+                        </p>
+                      </div>
+                      <div className="text-right min-w-[120px]">
+                        <p className="text-xs font-semibold uppercase text-emerald-100">
+                          Active
+                        </p>
+                        {minutesProgressPct !== null ? (
+                          <p className="text-2xl font-semibold text-white">
+                            {minutesProgressPct}%
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="mt-4 h-2 w-full rounded-full bg-white/15 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-white"
+                        style={{
+                          width:
+                            minutesProgressPct !== null
+                              ? `${minutesProgressPct}%`
                               : "100%",
-                        transition: "width 0.5s ease",
-                      }}
-                    />
+                          transition: "width 0.5s ease",
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+                )
               ) : null}
             </div>
           )}

@@ -32,10 +32,26 @@ export async function forwardBillingRequest({
   let data: any = {};
 
   try {
-    data = text ? JSON.parse(text) : {};
+    if (text) {
+      // Try to parse as JSON
+      data = JSON.parse(text);
+    } else {
+      data = {};
+    }
   } catch {
-    data = { raw: text };
+    // If parsing fails, check if it's a boolean string or other value
+    const trimmed = text.trim().toLowerCase();
+    if (trimmed === "true") {
+      data = true;
+    } else if (trimmed === "false") {
+      data = false;
+    } else {
+      data = { raw: text };
+    }
   }
+
+  // Log for debugging (remove in production if needed)
+  console.log(`[Billing API] ${endpoint} - Status: ${res.status}, Response:`, data);
 
   return NextResponse.json(data, { status: res.status });
 }
