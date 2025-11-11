@@ -67,7 +67,6 @@ export const AvatarVideo = forwardRef<HTMLVideoElement, AvatarVideoProps>(
             <CloseIcon />
           </Button>
         )}
-        {/* after 8 years */}
       <video
         ref={ref}
         autoPlay
@@ -89,4 +88,5 @@ export const AvatarVideo = forwardRef<HTMLVideoElement, AvatarVideoProps>(
     </>
   );
 });
+// hello
 AvatarVideo.displayName = "AvatarVideo";
