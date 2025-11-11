@@ -235,10 +235,13 @@ function InteractiveAvatar() {
   const [clientToken, setClientToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [minutesRemaining, setMinutesRemaining] = useState<number | null>(null);
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
   const [totalAllocatedMinutes, setTotalAllocatedMinutes] = useState<number | null>(null);
   const [timeExpired, setTimeExpired] = useState(false);
   const [isVerifyingToken, setIsVerifyingToken] = useState(false);
+  const secondsCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const minutesPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const minutesRemainingRef = useRef<number | null>(null);
   const hasExpiredRef = useRef(false);
   const tokenRef = useRef<string | null>(null);
   const queryToken = searchParams?.get("token") ?? null;
@@ -346,6 +349,35 @@ function InteractiveAvatar() {
     return null;
   };
 
+  const setMinutes = useCallback(
+    async (minutes: number) => {
+      const activeToken = tokenRef.current ?? clientToken ?? queryToken;
+      if (!activeToken) {
+        return false;
+      }
+
+      try {
+        const response = await fetch("/api/billing/set-minutes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: activeToken, minutes }),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          console.error("Failed to set minutes:", text);
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Set minutes error:", error);
+        return false;
+      }
+    },
+    [clientToken, queryToken],
+  );
+
   const fetchMinutesRemaining = useCallback(
     async (extend = false) => {
       const activeToken = tokenRef.current ?? clientToken ?? queryToken;
@@ -370,15 +402,16 @@ function InteractiveAvatar() {
         const minutes = parseMinutesValue(data);
 
         if (typeof minutes === "number") {
-          const sanitized = Math.max(minutes, 0);
-          setMinutesRemaining(sanitized);
+          // Display exact value from API
+          setMinutesRemaining(minutes);
           setTotalAllocatedMinutes((prev) => {
-            if (prev === null || sanitized > prev) {
-              return sanitized;
+            if (prev === null || minutes > prev) {
+              return minutes;
             }
             return prev;
           });
-          if (sanitized <= 0) {
+          
+          if (minutes <= 0) {
             await handleTimeExpired();
           }
         }
@@ -394,12 +427,26 @@ function InteractiveAvatar() {
 
   const startMinutesPolling = useCallback(() => {
     stopMinutesPolling();
-    minutesPollingRef.current = setInterval(() => {
-      fetchMinutesRemaining().catch((error) => {
+    minutesPollingRef.current = setInterval(async () => {
+      try {
+        // Use current displayed minutes value from ref
+        const currentDisplayedMinutes = minutesRemainingRef.current;
+        
+        if (currentDisplayedMinutes !== null && currentDisplayedMinutes > 0) {
+          // Reduce by 1 on server using set_minutes BEFORE fetching
+          const newMinutes = currentDisplayedMinutes - 1;
+          const setSuccess = await setMinutes(newMinutes);
+          
+          if (setSuccess) {
+            // Then fetch updated value from server
+            await fetchMinutesRemaining();
+          }
+        }
+      } catch (error) {
         console.error("Minutes polling loop error:", error);
-      });
-    }, 20000);
-  }, [fetchMinutesRemaining, stopMinutesPolling]);
+      }
+    }, 60000); // Poll every 1 minute
+  }, [fetchMinutesRemaining, setMinutes, stopMinutesPolling])
 
   const verifyBillingToken = useCallback(async () => {
     const activeToken = tokenRef.current ?? clientToken ?? queryToken;
@@ -735,11 +782,60 @@ function InteractiveAvatar() {
     return () => clearInterval(interval);
   }, [micPaused]);
 
+  // Keep ref in sync with state for polling
+  useEffect(() => {
+    minutesRemainingRef.current = minutesRemaining;
+  }, [minutesRemaining]);
+
+  // Start seconds countdown when 1 minute is left
+  useEffect(() => {
+    // Clear any existing countdown
+    if (secondsCountdownRef.current) {
+      clearInterval(secondsCountdownRef.current);
+      secondsCountdownRef.current = null;
+    }
+
+    // Start countdown when exactly 1 minute is remaining
+    if (minutesRemaining === 1 && sessionState === StreamingAvatarSessionState.CONNECTED) {
+      setSecondsRemaining(60); // Start at 60 seconds
+      
+      secondsCountdownRef.current = setInterval(() => {
+        setSecondsRemaining((prev) => {
+          if (prev === null || prev <= 1) {
+            if (secondsCountdownRef.current) {
+              clearInterval(secondsCountdownRef.current);
+              secondsCountdownRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000); // Update every second
+    } else if (minutesRemaining !== 1) {
+      // Reset seconds when not at 1 minute
+      setSecondsRemaining(null);
+    }
+
+    // Cleanup on unmount or when session ends
+    return () => {
+      if (secondsCountdownRef.current) {
+        clearInterval(secondsCountdownRef.current);
+        secondsCountdownRef.current = null;
+      }
+    };
+  }, [minutesRemaining, sessionState]);
+
   useEffect(() => {
     if (sessionState !== StreamingAvatarSessionState.CONNECTED) {
       stopMinutesPolling();
       setMinutesRemaining(null);
+      setSecondsRemaining(null);
+      minutesRemainingRef.current = null;
       setTotalAllocatedMinutes(null);
+      if (secondsCountdownRef.current) {
+        clearInterval(secondsCountdownRef.current);
+        secondsCountdownRef.current = null;
+      }
       if (!timeExpired) {
         setBillingMessage(null);
       }
@@ -845,10 +941,42 @@ function InteractiveAvatar() {
               </div>
             </div>
           ) : sessionState !== StreamingAvatarSessionState.INACTIVE ? (
-            <AvatarVideo ref={setVideoRef} />
+            <AvatarVideo 
+              ref={setVideoRef} 
+              minutesRemaining={minutesRemaining}
+              secondsRemaining={secondsRemaining}
+            />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
+            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
               <AvatarConfig config={config} onConfigChange={setConfig} />
+              {tokenError && (
+                <div className="w-full max-w-xl">
+                  <div className="flex gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100">
+                    <div className="text-xl font-semibold text-red-300">!</div>
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-wide text-red-200">
+                        Access Required
+                      </p>
+                      <p className="text-sm text-red-100/90">{tokenError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {isVerifyingToken && (
+                <div className="w-full max-w-xl">
+                  <div className="flex gap-3 rounded-2xl border border-indigo-400/40 bg-indigo-500/10 px-4 py-3 text-indigo-100">
+                    <div className="w-5 h-5 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mt-1" />
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-wide text-indigo-200">
+                        Verifying Purchase
+                      </p>
+                      <p className="text-sm text-indigo-50/90">
+                        Validating your token with the billing server...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -880,113 +1008,17 @@ function InteractiveAvatar() {
           ) : !micPaused ? (
             <LoadingIcon />
           ) : null}
-          {(tokenError ||
-            billingMessage ||
-            isVerifyingToken ||
-            (minutesRemaining !== null &&
-              sessionState === StreamingAvatarSessionState.CONNECTED)) && (
-            <div className="w-full max-w-xl space-y-3 text-left">
-              {tokenError ? (
-                <div className="flex gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100">
-                  <div className="text-xl font-semibold text-red-300">!</div>
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wide text-red-200">
-                      Access Required
-                    </p>
-                    <p className="text-sm text-red-100/90">{tokenError}</p>
-                  </div>
+          {billingMessage && (
+            <div className="w-full max-w-xl">
+              <div className="flex gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-amber-100">
+                <div className="text-xl font-semibold text-amber-300">⚠️</div>
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-amber-200">
+                    Session Notice
+                  </p>
+                  <p className="text-sm text-amber-50/90">{billingMessage}</p>
                 </div>
-              ) : null}
-              {billingMessage ? (
-                <div className="flex gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-amber-100">
-                  <div className="text-xl font-semibold text-amber-300">⚠️</div>
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wide text-amber-200">
-                      Session Notice
-                    </p>
-                    <p className="text-sm text-amber-50/90">{billingMessage}</p>
-                  </div>
-                </div>
-              ) : null}
-              {isVerifyingToken ? (
-                <div className="flex gap-3 rounded-2xl border border-indigo-400/40 bg-indigo-500/10 px-4 py-3 text-indigo-100">
-                  <div className="w-5 h-5 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mt-1" />
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wide text-indigo-200">
-                      Verifying Purchase
-                    </p>
-                    <p className="text-sm text-indigo-50/90">
-                      Validating your token with the billing server...
-                    </p>
-                  </div>
-                </div>
-              ) : null}
-              {minutesRemaining !== null &&
-              sessionState === StreamingAvatarSessionState.CONNECTED ? (
-                // Show single consolidated notification when expired, otherwise show timer
-                timeExpired ? (
-                  <div className="rounded-2xl border border-red-500/40 bg-gradient-to-r from-red-600/40 to-orange-500/20 px-5 py-4 text-white">
-                    <div className="flex items-start gap-4">
-                      <div className="text-2xl font-semibold text-red-300 mt-0.5">⚠</div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold uppercase tracking-[0.15em] text-red-100 mb-2">
-                          Session Expired
-                        </p>
-                        <p className="text-base text-white/90 mb-3">
-                          Your session time has ended. Please purchase more minutes to continue your session.
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-red-400/20">
-                          <p className="text-xs text-red-100/80">
-                            To start a new session, please visit your purchase link to add more minutes.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500/20 via-cyan-500/10 to-sky-500/10 px-5 py-4 text-white">
-                    <div className="flex items-start justify-between gap-6">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">
-                          Session Timer
-                        </p>
-                        <p className="text-3xl font-semibold mt-1">
-                          {minutesRemaining > 0
-                            ? `${minutesRemaining}m left`
-                            : "Expired"}
-                        </p>
-                        <p className="text-sm text-white/80">
-                          {minutesRemaining > 0
-                            ? "We'll pause the avatar automatically once time runs out."
-                            : "Please purchase more minutes to start a new session."}
-                        </p>
-                      </div>
-                      <div className="text-right min-w-[120px]">
-                        <p className="text-xs font-semibold uppercase text-emerald-100">
-                          Active
-                        </p>
-                        {minutesProgressPct !== null ? (
-                          <p className="text-2xl font-semibold text-white">
-                            {minutesProgressPct}%
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-4 h-2 w-full rounded-full bg-white/15 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-white"
-                        style={{
-                          width:
-                            minutesProgressPct !== null
-                              ? `${minutesProgressPct}%`
-                              : "100%",
-                          transition: "width 0.5s ease",
-                        }}
-                      />
-                    </div>
-                  </div>
-                )
-              ) : null}
+              </div>
             </div>
           )}
         </div>
