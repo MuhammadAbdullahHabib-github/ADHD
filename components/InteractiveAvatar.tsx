@@ -949,70 +949,60 @@ function InteractiveAvatar() {
               secondsRemaining={secondsRemaining}
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
-              <AvatarConfig config={config} onConfigChange={setConfig} />
+            <>
+              <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
+                <AvatarConfig 
+                  config={config} 
+                  onConfigChange={setConfig}
+                  onStartSession={() => startSessionV2(true)}
+                  isStarting={isStarting}
+                  showStartButton={sessionState === StreamingAvatarSessionState.INACTIVE && !micPaused}
+                />
+              </div>
               {tokenError && (
-                <div className="w-full max-w-xl">
-                  <div className="flex gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100">
-                    <div className="text-xl font-semibold text-red-300">!</div>
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-wide text-red-200">
-                        Access Required
-                      </p>
-                      <p className="text-sm text-red-100/90">{tokenError}</p>
+                <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+                  <div className="w-full max-w-xl mx-4 pointer-events-auto">
+                    <div className="flex gap-3 border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100">
+                      <div className="text-xl font-semibold text-red-300">!</div>
+                      <div>
+                        <p className="text-sm font-semibold uppercase tracking-wide text-red-200">
+                          Access Required
+                        </p>
+                        <p className="text-sm text-red-100/90">{tokenError}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
               {isVerifyingToken && (
-                <div className="w-full max-w-xl">
-                  <div className="flex gap-3 rounded-2xl border border-indigo-400/40 bg-indigo-500/10 px-4 py-3 text-indigo-100">
-                    <div className="w-5 h-5 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mt-1" />
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-wide text-indigo-200">
-                        Verifying Purchase
-                      </p>
-                      <p className="text-sm text-indigo-50/90">
-                        Validating your token with the billing server...
-                      </p>
+                <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+                  <div className="w-full max-w-xl mx-4 pointer-events-auto">
+                    <div className="flex gap-3 border border-indigo-400/40 bg-indigo-500/10 px-4 py-3 text-indigo-100">
+                      <div className="w-5 h-5 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mt-1" />
+                      <div>
+                        <p className="text-sm font-semibold uppercase tracking-wide text-indigo-200">
+                          Verifying Purchase
+                        </p>
+                        <p className="text-sm text-indigo-50/90">
+                          Validating your token with the billing server...
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
-        <div className="flex flex-col gap-3 items-center justify-center p-4 border-t border-zinc-700 w-full">
-          {sessionState === StreamingAvatarSessionState.CONNECTED ? (
+        {sessionState === StreamingAvatarSessionState.CONNECTED && (
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-zinc-900/95 to-transparent">
             <AvatarControls />
-          ) : sessionState === StreamingAvatarSessionState.INACTIVE && !micPaused ? (
-            <div className="flex flex-row gap-4">
-              <Button 
-                onClick={() => startSessionV2(true)}
-                disabled={isStarting}
-                className={`transition-all duration-200 transform active:scale-95 hover:scale-105 ${
-                  isStarting ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-lg'
-                }`}
-              >
-                {isStarting ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Starting...
-                  </div>
-                ) : (
-                  'Start Session'
-                )}
-              </Button>
-              {/* <Button onClick={() => startSessionV2(false)}>
-                Start Text Chat
-              </Button> */}
-            </div>
-          ) : !micPaused ? (
-            <LoadingIcon />
-          ) : null}
-          {billingMessage && (
-            <div className="w-full max-w-xl">
-              <div className="flex gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-amber-100">
+          </div>
+        )}
+        {billingMessage && (
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+            <div className="w-full max-w-xl mx-4 pointer-events-auto">
+              <div className="flex gap-3 border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-amber-100">
                 <div className="text-xl font-semibold text-amber-300">⚠️</div>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-wide text-amber-200">
@@ -1022,8 +1012,8 @@ function InteractiveAvatar() {
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       {/* Voice Chat and Text Chat controls hidden for now */}
       {/* {sessionState === StreamingAvatarSessionState.CONNECTED && (

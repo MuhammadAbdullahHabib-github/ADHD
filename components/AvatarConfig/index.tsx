@@ -10,6 +10,7 @@ import {
 
 import { Input } from "../Input";
 import { Select } from "../Select";
+import { Button } from "../Button";
 
 import { Field } from "./Field";
 
@@ -18,11 +19,17 @@ import { AVATARS, STT_LANGUAGE_LIST } from "@/app/lib/constants";
 interface AvatarConfigProps {
   onConfigChange: (config: StartAvatarRequest) => void;
   config: StartAvatarRequest;
+  onStartSession?: () => void;
+  isStarting?: boolean;
+  showStartButton?: boolean;
 }
 
 export const AvatarConfig: React.FC<AvatarConfigProps> = ({
   onConfigChange,
   config,
+  onStartSession,
+  isStarting = false,
+  showStartButton = false,
 }) => {
   const onChange = <T extends keyof StartAvatarRequest>(
     key: T,
@@ -88,6 +95,27 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
           onSelect={(option) => onChange("language", option.value)}
         />
       </Field>
+      
+      {showStartButton && onStartSession && (
+        <div className="flex flex-row gap-4 justify-center mt-2">
+          <Button 
+            onClick={onStartSession}
+            disabled={isStarting}
+            className={`transition-all duration-200 transform active:scale-95 hover:scale-105 ${
+              isStarting ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-lg'
+            }`}
+          >
+            {isStarting ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Starting...
+              </div>
+            ) : (
+              'Start Session'
+            )}
+          </Button>
+        </div>
+      )}
       
        {/*
       <Field label="Avatar Quality">
