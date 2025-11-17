@@ -52,23 +52,23 @@ export const AvatarConfig: React.FC<AvatarConfigProps> = ({
       <Field label="Avatar">
         <div className="flex gap-2 w-full">
           <button
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
               config.avatarName === "Ann_Therapist_public"
-                ? "text-white"
+                ? "text-white shadow-md hover:shadow-lg hover:bg-[#4a6b05]"
                 : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
             }`}
-            style={config.avatarName === "Ann_Therapist_public" ? { backgroundColor: '#7559ff' } : {}}
+            style={config.avatarName === "Ann_Therapist_public" ? { backgroundColor: '#5C8607' } : {}}
             onClick={() => changeAvatar("Ann_Therapist_public")}
           >
             Ann Therapist (Female)
           </button>
           <button
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
               config.avatarName === "Graham_Chair_Sitting_public"
-                ? "text-white"
+                ? "text-white shadow-md hover:shadow-lg hover:bg-[#4a6b05]"
                 : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
             }`}
-            style={config.avatarName === "Graham_Chair_Sitting_public" ? { backgroundColor: '#7559ff' } : {}}
+            style={config.avatarName === "Graham_Chair_Sitting_public" ? { backgroundColor: '#5C8607' } : {}}
             onClick={() => changeAvatar("Graham_Chair_Sitting_public")}
           >
             Graham Therapist (Male)

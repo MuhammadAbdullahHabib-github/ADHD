@@ -337,6 +337,11 @@ function InteractiveAvatar() {
   }, [expireBillingToken, stopAvatar, stopMinutesPolling]);
 
   const parseMinutesValue = (data: any) => {
+    // New format: remaining_minutes
+    if (typeof data?.remaining_minutes === "number") {
+      return data.remaining_minutes;
+    }
+    // Legacy formats for backward compatibility
     if (typeof data?.minutes_remaining === "number") {
       return data.minutes_remaining;
     }
@@ -363,9 +368,11 @@ function InteractiveAvatar() {
           body: JSON.stringify({ token: activeToken, minutes }),
         });
 
-        if (!response.ok) {
-          const text = await response.text();
-          console.error("Failed to set minutes:", text);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          const errorMessage = data.message || data.error || "Failed to set minutes";
+          console.error("Failed to set minutes:", errorMessage);
           return false;
         }
 
@@ -379,7 +386,7 @@ function InteractiveAvatar() {
   );
 
   const fetchMinutesRemaining = useCallback(
-    async (extend = false) => {
+    async () => {
       const activeToken = tokenRef.current ?? clientToken ?? queryToken;
       if (!activeToken) {
         return null;
@@ -389,7 +396,7 @@ function InteractiveAvatar() {
         const response = await fetch("/api/billing/minutes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: activeToken, extend }),
+          body: JSON.stringify({ token: activeToken }),
         });
 
         if (!response.ok) {
@@ -489,16 +496,11 @@ function InteractiveAvatar() {
       }
 
       // Check if response indicates success
-      // Handle various response formats: true, {success: true}, {verified: true}, etc.
+      // New format: {success: true, valid: true}
       const isSuccess = 
-        response.ok && (
-          data === true || 
-          data === "true" ||
-          data?.success === true ||
-          data?.verified === true ||
-          data?.valid === true ||
-          (typeof data === "object" && Object.keys(data).length === 0 && response.status === 200)
-        );
+        response.ok && 
+        data?.success === true && 
+        data?.valid === true;
 
       if (!isSuccess) {
         const message =

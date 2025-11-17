@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const BILLING_API_BASE =
   process.env.BILLING_API_BASE ?? "https://adhdtoolsdaily.com/wp-json/adhd/v1";
-const BILLING_API_BEARER = process.env.BILLING_API_BEARER;
+const BILLING_API_BEARER = process.env.BILLING_API_BEARER ?? "k3tG8wQ2xR!9uZp4";
 
 export async function forwardBillingRequest({
   endpoint,
@@ -11,18 +11,13 @@ export async function forwardBillingRequest({
   endpoint: string;
   payload: Record<string, unknown>;
 }) {
-  if (!BILLING_API_BEARER) {
-    return NextResponse.json(
-      { error: "Billing bearer token is not configured." },
-      { status: 500 },
-    );
-  }
+  const bearerToken = BILLING_API_BEARER;
 
   const res = await fetch(`${BILLING_API_BASE}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${BILLING_API_BEARER}`,
+      Authorization: `Bearer ${bearerToken}`,
     },
     body: JSON.stringify(payload),
     cache: "no-store",
@@ -48,6 +43,20 @@ export async function forwardBillingRequest({
     } else {
       data = { raw: text };
     }
+  }
+
+  // Handle WordPress errors
+  if (!res.ok || (data.success === false || data.error)) {
+    const errorMessage = data.message || data.error || data.data?.message || "An error occurred";
+    console.error(`[Billing API] ${endpoint} - Error:`, errorMessage);
+    return NextResponse.json(
+      { 
+        success: false,
+        error: errorMessage,
+        ...data 
+      },
+      { status: res.status || 500 }
+    );
   }
 
   // Log for debugging (remove in production if needed)
